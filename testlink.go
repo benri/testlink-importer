@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-  "github.com/lebenri/testlink/tlstructs"
+  "github.com/benri/testlink/tlstructs"
 )
 
 const AppVersion = "0.0.2"
