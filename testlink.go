@@ -10,76 +10,48 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+  "github.com/lebenri/testlink/tlstructs"
 )
 
-const AppVersion = "0.0.1"
+const AppVersion = "0.0.2"
 
 func printError(e error) {
 	fmt.Println("Error:", e)
 }
 
-type Testcases struct {
-	XMLName       xml.Name    `xml:"testcases"`
-	TestcaseList  []Testcase  `xml:"testcase"`
-}
-
-type Testcase struct {
-	XMLName 			xml.Name  		`xml:"testcase"`
-	Name    			string    		`xml:"name,attr"`
-	Summary 			string    		`xml:"summary"`
-	Steps					Steps					`xml:"steps"`
-	CustomFields	CustomFields	`xml:"custom_fields"`
-}
-
-type Steps struct {
-	XMLName   xml.Name  `xml:"steps"`
-	StepList  []Step   	`xml:"step"`
-}
-
-type Step struct {
-	XMLName     xml.Name  `xml:"step"`
-	StepNumber  int       `xml:"step_number"`
-	Actions     string    `xml:"actions"`
-	Results     string    `xml:"expectedresults"`
-}
-
-type CustomFields struct {
-	XMLName           xml.Name       `xml:"custom_fields"`
-	CustomFieldList   []CustomField  `xml:"custom_field"`
-}
-
-type CustomField struct {
-	XMLName xml.Name  `xml:"custom_field"`
-	Name    string    `xml:"name"`
-	Value   string    `xml:"value"`
-}
-
 func ExportAsTestcases(records [][]string) ([]byte, error) {
 	
-	xml_data := &Testcases{}
+	xml_data := &tlstructs.Testcases{}
 	
 	for linenum, record := range records {
 		
-		// skip first line or if testcase has no name provided
+		// skip first line or if no provided testcase name
 		if linenum == 0 || record[0] == "" {
 			continue
 		}
 		
-		testcase := Testcase{Name: record[0], Summary: record[1]}
+		testcase := tlstructs.Testcase{Name: record[0], Summary: record[1]}
 		
 		num_columns := len(record)
-		steps := Steps{}
-		cfs := CustomFields{}
+		steps := tlstructs.Steps{}
+		cfs := tlstructs.CustomFields{}
 		
 		for i, j, k := 3, 4, 1; i < num_columns; i, j, k = i+2, j+2, k+1 {
 			if (i < num_columns && record[i] != "") || (j < num_columns && record[j] != "") {
 
-				step := Step{StepNumber: k, Actions: record[i], Results: record[j]}
+				step := tlstructs.Step{}
+        step.StepNumber = k
+        step.Actions = record[i]
+        step.Results = record[j]
+        
 				steps.StepList = append(steps.StepList, step)
 			}
 		}
 		
-		cf := CustomField{Name: "Comments", Value: record[2]}
+		cf := tlstructs.CustomField{}
+    cf.Name = "Comments"
+    cf.Value = record[2]
+    
 		cfs.CustomFieldList = append(cfs.CustomFieldList, cf)
 		
 		testcase.Steps = steps
@@ -100,9 +72,9 @@ func leftPadZero(s string, totalLength int) string {
 	}
 }
 
-func ExportAsRequirements(records [][]string, docPrefix string) (string, error) {
-	xml_file := "<?xml version=\"1.0\" encoding=\"UTF-8\"?><requirements>"
-	
+func ExportAsRequirements(records [][]string, docPrefix string) ([]byte, error) {
+	xml_data := &tlstructs.Requirements{}
+  
 	docPrefixHyphen := ""
 	if docPrefix != "" {
 		docPrefixHyphen = docPrefix + "-"
@@ -110,58 +82,39 @@ func ExportAsRequirements(records [][]string, docPrefix string) (string, error) 
 	
 	for linenum, record := range records {
 		
-		// skip first line
-		if linenum == 0 {
+		// skip first line or if no provided requirement name
+		if linenum == 0 || record[0] == "" {
 			continue
 		}
 		
-		xml_file += "<requirement>"
-		xml_file += "<docid>" + docPrefixHyphen + leftPadZero(strconv.Itoa(linenum), 4) + "</docid>"
-		xml_file += "<title>" + record[0] + "</title>"
-
-		xml_file += "<description>" + record[1] + "</description>"
-		
-		// if tsNum > -1 {
-		// 	xml_file += "<expected_coverage>ts-" + strconv.Itoa(tsNum) + "</expected_coverage>"
-		// 	tsNum++
-		// }
-		
-		// num_columns := len(record)
-		// xml_file += "<steps>"
-		// for i, j := 3, 4; i < num_columns; i, j = i+2, j+2 {
-		// 	if (i < num_columns && record[i] != "") || (j < num_columns && record[j] != "") {
-		// 		xml_file += "<step>"
-		// 		xml_file += "<step_number>" + strconv.Itoa(i+1) + "</step_number>"
-		// 		xml_file += "<actions>" + record[i] + "</actions>" 
-		// 		xml_file += "<expectedresults>" + record[j] + "</expectedresults>"
-		// 		xml_file += "</step>"
-		// 	}
-		// }
-		// xml_file += "</steps>"
-
-		// xml_file += "<custom_fields><custom_field>"
-		// xml_file += "<name>Comments</name>"
-		// xml_file += "<value>" + record[2] + "</value>"
-		// xml_file += "</custom_field></custom_fields>"
-
-		xml_file += "</requirement>"
+    req := tlstructs.Requirement{}
+    req.Docid = docPrefixHyphen + leftPadZero(strconv.Itoa(linenum), 4)
+    req.Title = record[0]
+    req.Description = record[1]
+    
+    req.CustomFields = tlstructs.CustomFields{}
+    cf := tlstructs.CustomField{}
+    cf.Name = "Comments"
+    cf.Value = record[2]
+    req.CustomFields.CustomFieldList = append(req.CustomFields.CustomFieldList, cf)
+    
+    xml_data.RequirementList = append(xml_data.RequirementList, req)
 	}
-	xml_file += "</requirements>"
-	return xml_file, nil
+	return xml.MarshalIndent(xml_data, "  ", "    ")
 }
 
 func main() {
 	
 	requirementsFlagPtr := flag.Bool("r", false, "specify to import as requirements")
 	filenamePtr := flag.String("f", "", "filename")
-	// docPrefixPtr := flag.String("prefix", "", "doc id prefix (for requirements)")
+	docPrefixPtr := flag.String("prefix", "", "doc id prefix (for requirements)")
 	// testcaseStartNumPtr := flag.Int("ts", -1, "the first testcase ts-[id] from which this set of requirements will cover")
 	versionFlagPtr := flag.Bool("v", false, "print current version")
 	flag.Parse()
 	
 	var filename string = *filenamePtr
 	requirementsFlag := *requirementsFlagPtr
-	// docPrefix := *docPrefixPtr
+	docPrefix := *docPrefixPtr
 	// testcaseStartNum := *testcaseStartNumPtr
 	
 	if *versionFlagPtr {
@@ -205,7 +158,7 @@ func main() {
 	var outfilexml []byte
 	if (requirementsFlag) {
 		outfilename = "Requirements"+filenameNoExtBase+".xml"
-		// outfilexml, err = ExportAsRequirements(records, docPrefix)
+		outfilexml, err = ExportAsRequirements(records, docPrefix)
 	} else {
 		outfilename = filenameNoExt+".xml"
 		outfilexml, err = ExportAsTestcases(records)
